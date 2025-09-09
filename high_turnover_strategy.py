@@ -413,9 +413,17 @@ class MarketDataManager:
                     raise ValueError("empty_df_after_dropna")
                 df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", errors="coerce")
                 df = df.dropna(subset=["timestamp"]).set_index("timestamp")
-                # Ensure numeric and replace non-finite
+                # Ensure numeric and replace non-finite (avoid deprecated fillna(method=...))
                 for col in ["open", "high", "low", "close", "volume"]:
-                    df[col] = pd.to_numeric(df[col], errors="coerce").replace([np.inf, -np.inf], np.nan).fillna(method="ffill").fillna(method="bfill")
+                    df[col] = (
+                        pd.to_numeric(df[col], errors="coerce")
+                        .replace([np.inf, -np.inf], np.nan)
+                        .ffill()
+                        .bfill()
+                    )
+                # Log sanitization status
+                bad_vals = int(df[["open","high","low","close","volume"]].isna().sum().sum())
+                log_json(logging.DEBUG, "ohlcv_sanitized", symbol=symbol, rows=len(df), bad_values=bad_vals)
                 self.cache[cache_key] = df
                 self.cache_expiry[cache_key] = time.time() + self.cache_duration
                 return df.copy()
